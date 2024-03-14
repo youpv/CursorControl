@@ -12,17 +12,30 @@ pyautogui.FAILSAFE = False  # Disable the fail-safe feature
 screen_width, screen_height = pyautogui.size()
 screen_size = pyautogui.size()
 
+SWIPE_SPEED_THRESHOLD = 500
+SWIPE_COOLDOWN = 1
+last_swipe_time = 0
+right_wrist_history = []
+
 
 # Constants for exponential smoothing
 SMOOTHING_FACTOR = 0.7  # Adjust as needed for desired smoothing effect
 
 
+import numpy as np
+
+# Define a threshold for movement (in pixels)
+MOVEMENT_THRESHOLD = 10  # Adjust as needed
+
+
 def update_cursor_position(mapped_x, mapped_y, previous_position):
     global smoothed_position
+    global last_move_time  # Add this line
 
     if previous_position is None:
         # Initialize smoothed position with the current position if previous position is None
         smoothed_position = (mapped_x, mapped_y)
+        last_move_time = time.time()  # Add this line
     else:
         # Apply exponential smoothing to update the smoothed position
         smoothed_x = previous_position[0] + SMOOTHING_FACTOR * (
@@ -32,6 +45,19 @@ def update_cursor_position(mapped_x, mapped_y, previous_position):
             mapped_y - previous_position[1]
         )
         smoothed_position = (smoothed_x, smoothed_y)
+
+        # Check if the cursor has moved significantly
+        if (
+            np.sqrt(
+                (smoothed_position[0] - previous_position[0]) ** 2
+                + (smoothed_position[1] - previous_position[1]) ** 2
+            )
+            > MOVEMENT_THRESHOLD
+        ):
+            last_move_time = time.time()
+        elif time.time() - last_move_time >= 1.5:  # 2 seconds
+            pyautogui.click()
+            last_move_time = time.time()  # Reset the timer after the click
 
     # Move the cursor to the smoothed position
     pyautogui.moveTo(int(smoothed_position[0]), int(smoothed_position[1]))
@@ -62,6 +88,16 @@ def map_joints_to_color_space(joint, calibration):
         target_point2d = calibration.convert_3d_to_2d(
             source_point3d, source_camera, target_camera
         )
+
+        # Adjust the mapping to use a smaller portion of the Kinect's field of view
+        kinect_field_of_view_ratio = 0.8  # Adjust as needed
+        target_point2d.xy.x = target_point2d.xy.x / kinect_field_of_view_ratio
+        target_point2d.xy.y = target_point2d.xy.y / kinect_field_of_view_ratio
+
+        # Ensure the mapped coordinates are within the screen bounds
+        target_point2d.xy.x = min(max(target_point2d.xy.x, 0), screen_width)
+        target_point2d.xy.y = min(max(target_point2d.xy.y, 0), screen_height)
+
         return target_point2d
     except Exception as e:
         # Log any exceptions that occur during the conversion.
@@ -107,6 +143,7 @@ def process_hover_state(
 
 if __name__ == "__main__":
     pykinect.initialize_libraries(track_body=True)
+    last_move_time = None
 
     device_config = pykinect.default_configuration
     device_config.color_resolution = pykinect.K4A_COLOR_RESOLUTION_1080P
@@ -156,7 +193,7 @@ if __name__ == "__main__":
                 body = body_frame.get_body(body_id)
 
                 if body.is_valid():
-                    right_hand_joint = body.joints[pykinect.K4ABT_JOINT_HAND_RIGHT]
+                    right_hand_joint = body.joints[pykinect.K4ABT_JOINT_WRIST_RIGHT]
                     right_hand_point_2d = map_joints_to_color_space(
                         right_hand_joint, calibration
                     )
@@ -172,6 +209,29 @@ if __name__ == "__main__":
                             / color_camera_resolution_height
                         )
                         current_position = (mapped_x, mapped_y)
+
+                        right_wrist_history.append((current_position, time.time()))
+
+                        if len(right_wrist_history) >= 10:
+                            dx = (
+                                right_wrist_history[-1][0][0]
+                                - right_wrist_history[0][0][0]
+                            )
+                            dt = right_wrist_history[-1][1] - right_wrist_history[0][1]
+                            speed = dx / dt
+                            current_time = time.time()
+                            if current_time - last_swipe_time >= SWIPE_COOLDOWN:
+                                if speed > SWIPE_SPEED_THRESHOLD:
+                                    print("Swipe right detected")
+                                    # press right arrow key
+                                    pyautogui.press("right")
+                                    last_swipe_time = current_time
+                                elif speed < -SWIPE_SPEED_THRESHOLD:
+                                    print("Swipe left detected")
+                                    # press left arrow key
+                                    pyautogui.press("left")
+                                    last_swipe_time = current_time
+                            right_wrist_history = []
 
                         # Create a thread to update cursor position asynchronously
                         cursor_update_thread = threading.Thread(
