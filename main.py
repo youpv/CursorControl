@@ -12,7 +12,7 @@ pyautogui.FAILSAFE = False  # Disable the fail-safe feature
 screen_width, screen_height = pyautogui.size()
 screen_size = pyautogui.size()
 
-SWIPE_SPEED_THRESHOLD = 500
+SWIPE_SPEED_THRESHOLD = 1300
 SWIPE_COOLDOWN = 1
 last_swipe_time = 0
 right_wrist_history = []
@@ -217,8 +217,13 @@ if __name__ == "__main__":
                                 right_wrist_history[-1][0][0]
                                 - right_wrist_history[0][0][0]
                             )
+                            dy = (
+                                right_wrist_history[-1][0][1]
+                                - right_wrist_history[0][0][1]
+                            )
                             dt = right_wrist_history[-1][1] - right_wrist_history[0][1]
                             speed = dx / dt
+                            vertical_speed = dy / dt
                             current_time = time.time()
                             if current_time - last_swipe_time >= SWIPE_COOLDOWN:
                                 if speed > SWIPE_SPEED_THRESHOLD:
@@ -230,6 +235,16 @@ if __name__ == "__main__":
                                     print("Swipe left detected")
                                     # press left arrow key
                                     pyautogui.press("left")
+                                    last_swipe_time = current_time
+                                elif vertical_speed > SWIPE_SPEED_THRESHOLD:
+                                    print("Swipe down detected")
+                                    # press down arrow key
+                                    pyautogui.press("down")
+                                    last_swipe_time = current_time
+                                elif vertical_speed < -SWIPE_SPEED_THRESHOLD:
+                                    print("Swipe up detected")
+                                    # press up arrow key
+                                    pyautogui.press("up")
                                     last_swipe_time = current_time
                             right_wrist_history = []
 
