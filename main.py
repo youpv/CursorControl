@@ -12,8 +12,8 @@ pyautogui.FAILSAFE = False  # Disable the fail-safe feature
 screen_width, screen_height = pyautogui.size()
 screen_size = pyautogui.size()
 
-SWIPE_SPEED_THRESHOLD = 1300
-SWIPE_COOLDOWN = 1
+SWIPE_SPEED_THRESHOLD = 1000
+SWIPE_COOLDOWN = 2
 last_swipe_time = 0
 right_wrist_history = []
 
@@ -239,12 +239,12 @@ if __name__ == "__main__":
                                 elif vertical_speed > SWIPE_SPEED_THRESHOLD:
                                     print("Swipe down detected")
                                     # press down arrow key
-                                    pyautogui.press("down")
+                                    pyautogui.press("up")
                                     last_swipe_time = current_time
                                 elif vertical_speed < -SWIPE_SPEED_THRESHOLD:
                                     print("Swipe up detected")
                                     # press up arrow key
-                                    pyautogui.press("up")
+                                    pyautogui.press("down")
                                     last_swipe_time = current_time
                             right_wrist_history = []
 
