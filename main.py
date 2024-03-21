@@ -5,62 +5,35 @@ import pykinect_azure as pykinect
 from pykinect_azure.k4a._k4atypes import k4a_float3_t
 import threading
 from pykinect_azure.k4a.configuration import Configuration
-import pykinect_azure.k4a._k4a as _k4a
 import numpy as np
 
-pyautogui.FAILSAFE = False  # Disable the fail-safe feature
+pyautogui.FAILSAFE = False
 
 screen_width, screen_height = pyautogui.size()
 screen_size = pyautogui.size()
 
 SWIPE_SPEED_THRESHOLD = 1000
 SWIPE_COOLDOWN = 1.3
+CLICK_COOLDOWN = 1.0
+kinect_field_of_view_ratio = 1
 last_swipe_time = 0
+last_click_time = 0
 
+click_lock = threading.Lock()
 
-# Constants for exponential smoothing
-SMOOTHING_FACTOR = 0.7  # Adjust as needed for desired smoothing effect
-
-# Define a threshold for movement (in pixels)
-MOVEMENT_THRESHOLD = 10  # Adjust as needed
+SMOOTHING_FACTOR = 0.7
+MOVEMENT_THRESHOLD = 10
 
 right_wrist_history = []
 
-def update_cursor_position(mapped_x, mapped_y, previous_position):
-    global smoothed_position
-    global last_move_time  # Add this line
 
-    if previous_position is None:
-        # Initialize smoothed position with the current position if previous position is None
-        smoothed_position = (mapped_x, mapped_y)
-        last_move_time = time.time()  # Add this line
-    else:
-        # Apply exponential smoothing to update the smoothed position
-        smoothed_x = previous_position[0] + SMOOTHING_FACTOR * (
-            mapped_x - previous_position[0]
-        )
-        smoothed_y = previous_position[1] + SMOOTHING_FACTOR * (
-            mapped_y - previous_position[1]
-        )
-        smoothed_position = (smoothed_x, smoothed_y)
-
-        # Check if the cursor has moved significantly
-        if (
-            np.sqrt(
-                (smoothed_position[0] - previous_position[0]) ** 2
-                + (smoothed_position[1] - previous_position[1]) ** 2
-            )
-            > MOVEMENT_THRESHOLD
-        ):
-            last_move_time = time.time()
-        elif time.time() - last_move_time >= 1.5:  # 2 seconds
+def perform_click():
+    global last_click_time
+    with click_lock:
+        current_time = time.time()
+        if current_time - last_click_time > CLICK_COOLDOWN:
             pyautogui.click()
-            last_move_time = time.time()  # Reset the timer after the click
-
-    # Move the cursor to the smoothed position
-    pyautogui.moveTo(int(smoothed_position[0]), int(smoothed_position[1]))
-
-    return smoothed_position
+            last_click_time = current_time
 
 
 def map_hand_to_screen(hand_coords, depth_image_shape):
@@ -70,6 +43,34 @@ def map_hand_to_screen(hand_coords, depth_image_shape):
     screen_y = (hand_coords[1] / depth_height) * screen_height
 
     return screen_x, screen_y
+
+
+def update_cursor_position(mapped_x, mapped_y, previous_position):
+    global smoothed_position, last_move_time
+    if previous_position is None:
+        smoothed_position = (mapped_x, mapped_y)
+        last_move_time = time.time()
+    else:
+        smoothed_x = previous_position[0] + SMOOTHING_FACTOR * (
+            mapped_x - previous_position[0]
+        )
+        smoothed_y = previous_position[1] + SMOOTHING_FACTOR * (
+            mapped_y - previous_position[1]
+        )
+        smoothed_position = (smoothed_x, smoothed_y)
+        if (
+            np.sqrt(
+                (smoothed_position[0] - previous_position[0]) ** 2
+                + (smoothed_position[1] - previous_position[1]) ** 2
+            )
+            > MOVEMENT_THRESHOLD
+        ):
+            last_move_time = time.time()
+        elif time.time() - last_move_time >= 1.5:
+            perform_click()
+            last_move_time = time.time()
+    pyautogui.moveTo(int(smoothed_position[0]), int(smoothed_position[1]))
+    return smoothed_position
 
 
 def map_joints_to_color_space(joint, calibration):
@@ -88,7 +89,6 @@ def map_joints_to_color_space(joint, calibration):
         )
 
         # Adjust the mapping to use a smaller portion of the Kinect's field of view
-        kinect_field_of_view_ratio = 0.8  # Adjust as needed
         target_point2d.xy.x = target_point2d.xy.x / kinect_field_of_view_ratio
         target_point2d.xy.y = target_point2d.xy.y / kinect_field_of_view_ratio
 
@@ -104,17 +104,14 @@ def map_joints_to_color_space(joint, calibration):
 
 
 def is_cursor_over_button(cursor_position, button_position, button_size):
-    # Check if cursor is within the button bounds
     x, y = cursor_position
     bx, by, bw, bh = button_position + button_size
     if bx <= x <= bx + bw and by <= y <= by + bh:
-        print("Cursor is over the button")
         return True
     else:
         return False
 
 
-# Function that returns the current hover state and updates the state if necessary
 def process_hover_state(
     hovering,
     hover_start_time,
@@ -125,12 +122,10 @@ def process_hover_state(
 ):
     if is_cursor_over_button(cursor_position, button_position, button_size):
         if not hovering:
-            print("Cursor hovering over the button")
             hover_start_time = time.time()
             hovering = True
         elif time.time() - hover_start_time >= hover_duration:
-            print("Hover duration reached, clicking...")
-            pyautogui.click()
+            perform_click()
             hovering = False
             hover_start_time = None
     else:
@@ -144,7 +139,7 @@ if __name__ == "__main__":
     last_move_time = None
 
     device_config = Configuration()
-    device_config.color_resolution = pykinect.K4A_COLOR_RESOLUTION_1440P
+    device_config.color_resolution = pykinect.K4A_COLOR_RESOLUTION_720P
     device_config.color_format = pykinect.K4A_IMAGE_FORMAT_COLOR_BGRA32
     device_config.depth_mode = pykinect.K4A_DEPTH_MODE_NFOV_UNBINNED
     device_config.camera_fps = pykinect.K4A_FRAMES_PER_SECOND_30
