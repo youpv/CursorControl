@@ -226,12 +226,12 @@ if __name__ == "__main__":
                                 if speed > SWIPE_SPEED_THRESHOLD:
                                     print("Swipe right detected")
                                     # press right arrow key
-                                    pyautogui.press("right")
+                                    pyautogui.press("left")
                                     last_swipe_time = current_time
                                 elif speed < -SWIPE_SPEED_THRESHOLD:
                                     print("Swipe left detected")
                                     # press left arrow key
-                                    pyautogui.press("left")
+                                    pyautogui.press("right")
                                     last_swipe_time = current_time
                                 elif vertical_speed > SWIPE_SPEED_THRESHOLD:
                                     print("Swipe down detected")
