@@ -15,9 +15,11 @@ screen_size = pyautogui.size()
 SWIPE_SPEED_THRESHOLD = 1000
 SWIPE_COOLDOWN = 1.3
 CLICK_COOLDOWN = 1.0
+SPACE_COOLDOWN = 5.0
 kinect_field_of_view_ratio = 1
 last_swipe_time = 0
 last_click_time = 0
+last_space_time = 0
 
 click_lock = threading.Lock()
 
@@ -182,9 +184,16 @@ if __name__ == "__main__":
 
                 if body.is_valid():
                     right_hand_joint = body.joints[pykinect.K4ABT_JOINT_WRIST_RIGHT]
+                    left_hand_joint = body.joints[pykinect.K4ABT_JOINT_WRIST_LEFT]
+                    head_joint = body.joints[pykinect.K4ABT_JOINT_HEAD]
                     right_hand_point_2d = map_joints_to_color_space(
                         right_hand_joint, calibration
                     )
+                    left_hand_point_2d = map_joints_to_color_space(
+                        left_hand_joint, calibration
+                    )
+                    head_point_2d = map_joints_to_color_space(head_joint, calibration)
+
                     if right_hand_point_2d:
                         mapped_x = screen_width - (
                             right_hand_point_2d.xy.x
@@ -200,7 +209,7 @@ if __name__ == "__main__":
 
                         right_wrist_history.append((current_position, time.time()))
 
-                        if len(right_wrist_history) >= 10:
+                        if len(right_wrist_history) >= 5:
                             dx = (
                                 right_wrist_history[-1][0][0]
                                 - right_wrist_history[0][0][0]
@@ -244,6 +253,28 @@ if __name__ == "__main__":
                         cursor_update_thread.start()
 
                         previous_position = current_position
+
+                    if left_hand_point_2d and head_point_2d:
+                        mapped_y_left = (
+                            left_hand_point_2d.xy.y
+                            * screen_y
+                            / color_camera_resolution_height
+                        )
+                        mapped_y_head = (
+                            head_point_2d.xy.y
+                            * screen_y
+                            / color_camera_resolution_height
+                        )
+                        space_current_time = time.time()
+                        # if both left wrist and right wrist are above head, perform spacebar press
+                        if (
+                            mapped_y_left < mapped_y_head
+                            and mapped_y < mapped_y_head
+                            and space_current_time - last_space_time >= SPACE_COOLDOWN
+                        ):
+                            pyautogui.press("space")
+                            print("Spacebar pressed")
+                            last_space_time = space_current_time
 
         # Only process hovering state if previous_position is not None
         if previous_position is not None:
